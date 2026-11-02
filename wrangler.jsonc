@@ -11,13 +11,13 @@
     {
       "binding": "DB",
       "database_name": "linkbeam",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "524cfb2e-5499-4054-b8e0-4a6ee8ea8414"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "LINK_CACHE",
-      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+      "id": "05a2f7117eb74de48020811fe1dca59d"
     }
   ],
   "r2_buckets": [

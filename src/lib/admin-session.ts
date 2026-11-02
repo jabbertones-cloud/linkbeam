@@ -1,6 +1,6 @@
 const COOKIE_NAME = "ms_admin";
 const SESSION_TTL_SECONDS = 60 * 60 * 12;
-const PBKDF2_ITERATIONS = 600_000;
+const PBKDF2_ITERATIONS = 100_000; // Cloudflare Workers WebCrypto caps PBKDF2 at 100,000 iterations
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_DIGEST_BYTES = 32;
 

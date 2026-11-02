@@ -30,7 +30,7 @@ describe("admin password session", () => {
 
   it("creates and verifies versioned PBKDF2 password records", async () => {
     const record = await createAdminPasswordRecord("correct horse", new Uint8Array(16).fill(7));
-    expect(record).toMatch(/^pbkdf2_sha256\$600000\$/);
+    expect(record).toMatch(/^pbkdf2_sha256\$100000\$/);
     expect(adminPasswordHashKind(record)).toBe("pbkdf2");
     await expect(verifyAdminPassword("correct horse", { ADMIN_PASSWORD_HASH: record })).resolves.toBe(true);
     await expect(verifyAdminPassword("wrong", { ADMIN_PASSWORD_HASH: record })).resolves.toBe(false);
