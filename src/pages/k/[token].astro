@@ -1,0 +1,39 @@
+---
+import LinkLayout from "@layouts/LinkLayout.astro";
+import KitFanPage from "@components/KitFanPage.astro";
+import { artworkPublicPath } from "@lib/artwork";
+import { getKitDataByToken, recordKitMetric } from "@lib/kit";
+import { defer, getRuntimeEnv, publicBaseUrl } from "@lib/runtime";
+import { isBot } from "@lib/bots";
+
+const env = getRuntimeEnv(Astro);
+const tokenValue = Astro.params.token ?? "";
+const kit = await getKitDataByToken(env, tokenValue);
+if (!kit) return Astro.redirect("/404", 404);
+
+if (!isBot(Astro.request)) {
+  defer(Astro, recordKitMetric(env, {
+    linkId: kit.link.id,
+    token: tokenValue,
+    kind: "view",
+    request: Astro.request
+  }));
+}
+
+const variant = kit.link.variant === "peer-kit" ? "peer-kit" : "dj-kit";
+const baseUrl = publicBaseUrl(env, Astro.request).replace(/\/$/, "");
+const artworkPath = artworkPublicPath(kit.link.track);
+const artwork = artworkPath.startsWith("http") ? artworkPath : `${baseUrl}${artworkPath}`;
+const pageTitle = `${kit.link.track.title} — ${kit.artist.name} | Private kit`;
+const description = `Private ${variant === "dj-kit" ? "DJ promo" : "artist collaboration"} for ${kit.token.recipient_name}.`;
+---
+
+<LinkLayout title={pageTitle} description={description} ogTitle={pageTitle} ogDescription={description} ogImage={artwork} twitterCard="summary_large_image">
+  <KitFanPage
+    link={kit.link}
+    artist={kit.artist}
+    tracks={kit.tracks}
+    token={{ token: kit.token.token, recipientName: kit.token.recipient_name, contextLine: kit.token.context_line }}
+    variant={variant}
+  />
+</LinkLayout>

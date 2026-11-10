@@ -1,0 +1,445 @@
+---
+import AppLayout from "@layouts/AppLayout.astro";
+import { getLinkById } from "@lib/db";
+import {
+  listKitFeedback,
+  listKitTokens,
+  listKitTracks,
+  type KitTrack
+} from "@lib/kit";
+import { getRuntimeEnv, requireAdmin } from "@lib/runtime";
+
+const env = getRuntimeEnv(Astro);
+const blocked = await requireAdmin(Astro.request, env);
+if (blocked) return blocked;
+
+const link = await getLinkById(env, Astro.params.id ?? "");
+if (!link) return Astro.redirect("/admin", 302);
+
+type Settings = {
+  variant: string;
+  kit_genre_line: string;
+  kit_zip_r2_key: string;
+  bio: string;
+  photo_r2_key: string;
+  contact_email: string;
+  facts: string;
+};
+
+type MetricCounts = {
+  token: string;
+  views: number;
+  plays: number;
+  downloads: number;
+};
+
+const [settings, tracks, tokens, feedback, eventCounts] = await Promise.all([
+  env.DB.prepare(
+    `SELECT links.variant, links.kit_genre_line, links.kit_zip_r2_key,
+       COALESCE(artists.bio, '') AS bio,
+       COALESCE(artists.photo_r2_key, '') AS photo_r2_key,
+       COALESCE(artists.contact_email, '') AS contact_email,
+       COALESCE(artists.facts, '') AS facts
+     FROM links
+     JOIN tracks ON tracks.id = links.track_id
+     LEFT JOIN artists ON artists.id = tracks.artist_id
+     WHERE links.id = ?`
+  ).bind(link.id).first<Settings>(),
+  listKitTracks(env, link.id),
+  listKitTokens(env, link.id),
+  listKitFeedback(env, link.id),
+  env.DB.prepare(
+    `SELECT utm_content AS token,
+       SUM(CASE WHEN kind = 'view' THEN 1 ELSE 0 END) AS views,
+       SUM(CASE WHEN kind = 'play' AND platform NOT LIKE '% (ended)' THEN 1 ELSE 0 END) AS plays,
+       SUM(CASE WHEN kind = 'download' THEN 1 ELSE 0 END) AS downloads
+     FROM metric_events
+     WHERE link_id = ?
+     GROUP BY utm_content`
+  ).bind(link.id).all<MetricCounts>()
+]);
+
+const counts = new Map(
+  (eventCounts.results ?? []).map((row) => [row.token, row])
+);
+const feedbackCounts = new Map<string, number>();
+const recipients = new Map(
+  tokens.map((entry) => [entry.id, entry.recipient_name])
+);
+
+for (const item of feedback) {
+  feedbackCounts.set(
+    item.token_id,
+    (feedbackCounts.get(item.token_id) ?? 0) + 1
+  );
+}
+
+const fields = [
+  "position",
+  "title",
+  "mix_name",
+  "duration_sec",
+  "bpm",
+  "musical_key",
+  "preview_r2_key",
+  "mp3_r2_key",
+  "wav_r2_key",
+  "aiff_r2_key",
+  "lyrics",
+  "parts_r2_key"
+] as const;
+
+const labels: Record<string, string> = {
+  position: "Position",
+  title: "Title",
+  mix_name: "Mix",
+  duration_sec: "Duration (seconds)",
+  bpm: "BPM",
+  musical_key: "Key",
+  preview_r2_key: "Preview R2 key",
+  mp3_r2_key: "MP3 R2 key",
+  wav_r2_key: "WAV R2 key",
+  aiff_r2_key: "AIFF R2 key",
+  lyrics: "Lyrics",
+  parts_r2_key: "Parts R2 key"
+};
+
+const inputValue = (track: KitTrack | null, name: string) =>
+  track
+    ? String(track[name as keyof KitTrack] ?? "")
+    : name === "mix_name"
+      ? "Original"
+      : name === "position" || name === "duration_sec"
+        ? "0"
+        : "";
+
+const kitOrigin = "https://linkbeam.smatdesigns.workers.dev/k/";
+---
+
+<AppLayout title={`${link.link_name} · Media kit`}>
+  <main class="admin-page shell kit-admin" data-link-id={link.id}>
+    <header class="heading">
+      <div>
+        <a href={`/admin/links/${link.id}`}>← Back to link</a>
+        <h1>Media kit · {link.link_name}</h1>
+        <p class="muted">
+          Private DJ promos and peer-artist collaboration kits.
+        </p>
+      </div>
+    </header>
+
+    <section class="admin-panel section" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Kit settings</h2>
+      <form data-kit-form data-action="save-settings" class="form-grid">
+        <label>
+          Variant
+          <select name="variant">
+            <option value="smart" selected={(settings?.variant ?? "smart") === "smart"}>Smart</option>
+            <option value="dj-kit" selected={settings?.variant === "dj-kit"}>DJ kit</option>
+            <option value="peer-kit" selected={settings?.variant === "peer-kit"}>Peer-artist kit</option>
+          </select>
+        </label>
+        <label>
+          Genre line
+          <input name="kitGenreLine" value={settings?.kit_genre_line ?? ""} maxlength="1000" />
+        </label>
+        <label>
+          Kit ZIP R2 key
+          <input name="kitZipR2Key" value={settings?.kit_zip_r2_key ?? ""} maxlength="1000" />
+        </label>
+        <label>
+          Artist photo R2 key
+          <input name="photoR2Key" value={settings?.photo_r2_key ?? ""} maxlength="1000" />
+        </label>
+        <label>
+          Contact email
+          <input type="email" name="contactEmail" value={settings?.contact_email ?? ""} />
+        </label>
+        <label class="wide">
+          Artist bio
+          <textarea name="bio" rows="4" maxlength="20000">{settings?.bio ?? ""}</textarea>
+        </label>
+        <label class="wide">
+          Artist facts (one per line)
+          <textarea name="facts" rows="5" maxlength="20000">{settings?.facts ?? ""}</textarea>
+        </label>
+        <div class="form-actions wide">
+          <button type="submit">Save settings</button>
+          <span class="muted" data-status role="status"></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-panel section" aria-labelledby="tracks-heading">
+      <h2 id="tracks-heading">Kit tracks</h2>
+      <p class="muted">Configure the audio source keys and download formats for each track.</p>
+      {tracks.map((track) => (
+        <details class="track-editor" open={tracks.length < 4}>
+          <summary>
+            {track.position + 1}. {track.title}
+            <span class="muted"> · {track.mix_name}</span>
+          </summary>
+          <form data-kit-form data-action="save-track" data-track-id={track.id} class="form-grid">
+            {fields.map((field) => (
+              <label class:list={[field === "lyrics" && "wide"]}>
+                {labels[field]}
+                {field === "lyrics" ? (
+                  <textarea name={field} rows="4">{inputValue(track, field)}</textarea>
+                ) : (
+                  <input
+                    name={field}
+                    value={inputValue(track, field)}
+                    type={["position", "duration_sec", "bpm"].includes(field) ? "number" : "text"}
+                    min={["position", "duration_sec"].includes(field) ? "0" : field === "bpm" ? "1" : undefined}
+                    step="1"
+                    required={field === "title"}
+                  />
+                )}
+              </label>
+            ))}
+            <div class="form-actions wide">
+              <button type="submit">Save track</button>
+              <button type="button" class="danger" data-delete-track={track.id}>Delete track</button>
+              <span data-status role="status" class="muted"></span>
+            </div>
+          </form>
+        </details>
+      ))}
+
+      <details class="track-editor">
+        <summary>+ Add track</summary>
+        <form data-kit-form data-action="save-track" class="form-grid">
+          {fields.map((field) => (
+            <label class:list={[field === "lyrics" && "wide"]}>
+              {labels[field]}
+              {field === "lyrics" ? (
+                <textarea name={field} rows="4"></textarea>
+              ) : (
+                <input
+                  name={field}
+                  value={inputValue(null, field)}
+                  type={["position", "duration_sec", "bpm"].includes(field) ? "number" : "text"}
+                  min={["position", "duration_sec"].includes(field) ? "0" : field === "bpm" ? "1" : undefined}
+                  step="1"
+                  required={field === "title"}
+                />
+              )}
+            </label>
+          ))}
+          <div class="form-actions wide">
+            <button type="submit">Add track</button>
+            <span data-status role="status" class="muted"></span>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <section class="admin-panel section" aria-labelledby="tokens-heading">
+      <h2 id="tokens-heading">Private recipient links</h2>
+      <form data-kit-form data-action="create-token" class="form-grid">
+        <label>
+          Recipient name
+          <input name="recipientName" required maxlength="250" />
+        </label>
+        <label>
+          Personal context line
+          <input name="contextLine" maxlength="1000" />
+        </label>
+        <div class="form-actions wide">
+          <button type="submit">Create private link</button>
+          <span data-status role="status" class="muted"></span>
+        </div>
+      </form>
+
+      <div class="new-token" data-new-token hidden>
+        <strong>New private URL</strong>
+        <a data-new-url href=""></a>
+        <button type="button" data-copy-new>Copy URL</button>
+      </div>
+
+      <div class="table-scroll">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Recipient</th>
+              <th>Created</th>
+              <th>Private URL</th>
+              <th>Views</th>
+              <th>Plays</th>
+              <th>Downloads</th>
+              <th>Feedback</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map((item) => {
+              const c = counts.get(item.token);
+              return (
+                <tr>
+                  <td>{item.recipient_name}</td>
+                  <td>{item.created_at}</td>
+                  <td><a href={`${kitOrigin}${item.token}`} target="_blank" rel="noopener noreferrer" data-sensitive>Open kit ↗</a></td>
+                  <td>{c?.views ?? 0}</td>
+                  <td>{c?.plays ?? 0}</td>
+                  <td>{c?.downloads ?? 0}</td>
+                  <td>{feedbackCounts.get(item.id) ?? 0}</td>
+                </tr>
+              );
+            })}
+            {tokens.length === 0 && (
+              <tr><td colspan="7">No private links created yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="admin-panel section" aria-labelledby="feedback-heading">
+      <h2 id="feedback-heading">Recipient feedback</h2>
+      <div class="table-scroll">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Recipient</th>
+              <th>Rating</th>
+              <th>Favourite track</th>
+              <th>Would play</th>
+              <th>Comment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {feedback.map((entry) => (
+              <tr>
+                <td>{entry.created_at}</td>
+                <td>{recipients.get(entry.token_id) ?? "Unknown"}</td>
+                <td>{entry.rating ?? "—"}</td>
+                <td>{entry.favourite_track || "—"}</td>
+                <td>{entry.would_play || "—"}</td>
+                <td class="comment">{entry.comment || "—"}</td>
+              </tr>
+            ))}
+            {feedback.length === 0 && (
+              <tr><td colspan="6">No feedback yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const root = document.querySelector<HTMLElement>(".kit-admin");
+    if (root) {
+      const linkId = root.dataset.linkId ?? "";
+
+      const post = async (payload: unknown) => {
+        const response = await fetch("/api/admin/kit", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = (await response.json().catch(() => ({}))) as { error?: string; url: string };
+        if (!response.ok) throw new Error(data.error || "Request failed.");
+        return data;
+      };
+
+      for (const form of root.querySelectorAll<HTMLFormElement>("[data-kit-form]")) {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (!form.reportValidity()) return;
+
+          const action = form.dataset.action;
+          const values = Object.fromEntries(new FormData(form));
+          const status = form.querySelector<HTMLElement>("[data-status]");
+          const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+          let payload: Record<string, unknown> = { action, linkId, ...values };
+
+          if (action === "save-track") {
+            const number = (name: string) => Number(values[name] ?? "0");
+            payload = {
+              action,
+              linkId,
+              track: {
+                ...values,
+                ...(form.dataset.trackId ? { id: form.dataset.trackId } : {}),
+                position: number("position"),
+                duration_sec: number("duration_sec"),
+                bpm: String(values.bpm ?? "").trim() === "" ? null : number("bpm")
+              }
+            };
+          }
+
+          if (submit) submit.disabled = true;
+          if (status) status.textContent = "Saving…";
+
+          try {
+            const result = await post(payload);
+            if (action === "create-token") {
+              const box = root.querySelector<HTMLElement>("[data-new-token]");
+              const anchor = root.querySelector<HTMLAnchorElement>("[data-new-url]");
+              if (box && anchor) {
+                anchor.href = result.url;
+                anchor.textContent = result.url;
+                box.hidden = false;
+              }
+            }
+            if (status) status.textContent = "Saved.";
+            if (action === "save-track") window.location.reload();
+          } catch (error) {
+            if (status) status.textContent = error instanceof Error ? error.message : "Save failed.";
+          } finally {
+            if (submit) submit.disabled = false;
+          }
+        });
+      }
+
+      for (const button of root.querySelectorAll<HTMLButtonElement>("[data-delete-track]")) {
+        button.addEventListener("click", async () => {
+          const trackId = button.dataset.deleteTrack;
+          if (!trackId || !window.confirm("Delete this kit track?")) return;
+          button.disabled = true;
+          try {
+            await post({ action: "delete-track", linkId, trackId });
+            window.location.reload();
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : "Delete failed.");
+            button.disabled = false;
+          }
+        });
+      }
+
+      root.querySelector<HTMLButtonElement>("[data-copy-new]")?.addEventListener("click", async () => {
+        const value = root.querySelector<HTMLAnchorElement>("[data-new-url]")?.href;
+        if (value) await navigator.clipboard.writeText(value);
+      });
+    }
+  </script>
+</AppLayout>
+
+<style>
+  .kit-admin { display: grid; gap: 1.5rem; padding-block: 2rem 4rem; }
+  .heading h1 { margin: .5rem 0; font-size: clamp(1.5rem, 3vw, 2rem); }
+  .heading a { color: var(--muted); }
+  .section { display: grid; gap: 1rem; }
+  .section h2 { margin: 0; }
+  .muted { color: var(--muted); font-size: .875rem; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+  label { display: grid; gap: .35rem; font-size: .85rem; font-weight: 600; }
+  input, select, textarea { width: 100%; min-width: 0; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--foreground); font: inherit; }
+  .wide { grid-column: 1 / -1; }
+  .form-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  button { padding: .6rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--foreground); cursor: pointer; font: inherit; }
+  button:disabled { opacity: .5; cursor: wait; }
+  button.danger { color: var(--danger, #e56b6b); }
+  .track-editor { border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+  .track-editor summary { font-weight: 650; cursor: pointer; }
+  .track-editor form { padding-top: 1rem; }
+  .table-scroll { overflow-x: auto; }
+  .admin-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .admin-table th, .admin-table td { text-align: left; vertical-align: top; padding: .7rem; border-bottom: 1px solid var(--border); }
+  .admin-table th { white-space: nowrap; color: var(--muted); }
+  .admin-table .comment { max-width: 24rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .new-token { display: grid; gap: .35rem; border: 1px solid var(--border); border-radius: 10px; padding: 1rem; overflow-wrap: anywhere; }
+  [hidden] { display: none !important; }
+  @media (max-width: 620px) { .form-grid { grid-template-columns: 1fr; } }
+</style>

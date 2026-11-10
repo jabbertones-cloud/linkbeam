@@ -3,7 +3,7 @@ import type { RuntimeEnv } from "@lib/runtime";
 import { trackingAttribution, trackingCookies, type ResolvedTrackingCookies, type TrackingAttribution } from "@lib/tracking";
 import { clientInfoFromRequest } from "@lib/client-info";
 
-export type MetricKind = "view" | "click" | "presave" | "subscribe";
+export type MetricKind = "view" | "click" | "presave" | "subscribe" | "play" | "download" | "feedback";
 
 export interface RecordMetricEventInput {
   linkId: string;

@@ -1,0 +1,317 @@
+---
+import { formatShortDate } from "@lib/datetime";
+import { artworkPublicPath } from "@lib/artwork";
+import { parseTrackPalette, paletteStyleAttribute } from "@lib/palette";
+import { asciiPatternDataUri, backgroundClasses, buttonClasses } from "@lib/page-style";
+import { DEFAULT_PAGE_STYLE_OPTIONS, normalizePageStyleOptions, styleOptionsCssVars } from "@lib/page-style-options";
+import type { KitArtist, KitData, KitTrack } from "@lib/kit";
+
+type Variant = "dj-kit" | "peer-kit";
+interface Props {
+  link: KitData["link"];
+  artist: KitArtist;
+  tracks: KitTrack[];
+  token: { token: string; recipientName: string; contextLine: string };
+  variant: Variant;
+}
+const { link, artist, tracks, token, variant } = Astro.props;
+const isDj = variant === "dj-kit";
+const releaseTitle = link.track.title;
+const artwork = artworkPublicPath(link.track);
+const palette = parseTrackPalette(link.track.palette);
+const opts = normalizePageStyleOptions(link.page_style_options ?? DEFAULT_PAGE_STYLE_OPTIONS);
+const background = link.page_background_style;
+const ascii = background === "ascii" ? asciiPatternDataUri(palette, opts.ascii.density, opts.ascii.contrast) : "";
+const safeArtwork = artwork.replace(/["\\\n\r]/g, "");
+const pageStyle = [
+  paletteStyleAttribute(palette),
+  `--artwork-image: url("${safeArtwork}")`,
+  styleOptionsCssVars(background, opts),
+  ascii ? `--ascii-pattern: ${ascii}` : ""
+].filter(Boolean).join("; ");
+const baseFileUrl = `/kit-file/${encodeURIComponent(token.token)}`;
+const downloadUrl = (track: KitTrack, format: string) => `${baseFileUrl}/dl/${encodeURIComponent(track.id)}/${format}`;
+const formatTime = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.floor(Math.max(0, seconds)) % 60).padStart(2, "0")}`;
+const factLines = artist.facts.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+const mailto = artist.contact_email ? `mailto:${artist.contact_email}?subject=${encodeURIComponent(`Re: ${releaseTitle}`)}` : "";
+const lead = tracks[0];
+---
+
+<main class:list={["kit-page", backgroundClasses(background), buttonClasses(link.button_style)]} style={pageStyle} data-kit-root data-token={token.token}>
+  <div class="kit-backdrop" aria-hidden="true"></div>
+  <div class="kit-content">
+    {isDj ? (
+      <p class="greeting">Hi {token.recipientName} — private promo for you · plays/downloads logged</p>
+    ) : (
+      <p class="eyebrow">PRIVATE ARTIST INVITATION FOR {token.recipientName}</p>
+    )}
+
+    <header class="hero">
+      <img class="cover" src={artwork} alt={`${releaseTitle} cover art`} width="640" height="640" loading="eager" decoding="async" />
+      <div class="hero-copy">
+        <p class="eyebrow">{isDj ? "PRIVATE DJ PROMO" : "LET'S MAKE SOMETHING"}</p>
+        {variant === "peer-kit" && token.contextLine && <p class="invitation">{token.contextLine}</p>}
+        <h1><span>{artist.name}</span> — {releaseTitle}</h1>
+        {link.kit_genre_line && <p class="genre">{link.kit_genre_line}</p>}
+        <p class="muted">{tracks.length} {tracks.length === 1 ? "track" : "tracks"}{link.track.release_at ? ` · ${formatShortDate(link.track.release_at)}` : ""}</p>
+        {isDj && token.contextLine && <p class="context">{token.contextLine}</p>}
+      </div>
+    </header>
+
+    {lead && (
+      <section class="lead card" aria-label="Lead track">
+        <p class="eyebrow">01 / LEAD TRACK</p>
+        <div class="lead-row">
+          <div><h2>{lead.title}</h2><p class="muted">{lead.mix_name} · {formatTime(lead.duration_sec)}{lead.bpm != null ? ` · ${lead.bpm} BPM` : ""}</p></div>
+          <button type="button" class="play-control" data-play-track={lead.id} aria-label={`Play ${lead.title}`} aria-pressed="false" disabled={!lead.preview_r2_key}><span data-play-icon>▶</span></button>
+        </div>
+      </section>
+    )}
+
+    <section class="track-section" aria-labelledby="tracks-heading">
+      <div class="section-heading"><p class="eyebrow">THE RECORD / {String(tracks.length).padStart(2, "0")}</p><h2 id="tracks-heading">{isDj ? "Full tracklist" : "Listen to the ideas"}</h2></div>
+      <div class="track-list">
+        {tracks.map((track, i) => (
+          <article class="track-row" data-track-row={track.id}>
+            <button class="row-play" type="button" data-play-track={track.id} aria-label={`Play ${track.title}`} aria-pressed="false" disabled={!track.preview_r2_key}><span data-play-icon>▶</span></button>
+            <div class="track-text"><strong>{String(i + 1).padStart(2, "0")}. {track.title}</strong><span>{track.mix_name}</span></div>
+            <div class="track-details"><span>{formatTime(track.duration_sec)}</span>{track.bpm != null && <span>{track.bpm} BPM</span>}{track.musical_key && <span>{track.musical_key}</span>}</div>
+            {isDj && (
+              <div class="file-links" aria-label={`Download ${track.title}`}>
+                {track.mp3_r2_key && <a href={downloadUrl(track, "mp3")}>MP3</a>}
+                {track.wav_r2_key && <a href={downloadUrl(track, "wav")}>WAV</a>}
+                {track.aiff_r2_key && <a href={downloadUrl(track, "aiff")}>AIFF</a>}
+              </div>
+            )}
+            {!isDj && track.lyrics.trim() && <details class="lyrics"><summary>Lyrics</summary><p>{track.lyrics}</p></details>}
+          </article>
+        ))}
+      </div>
+    </section>
+
+    {isDj ? (
+      <>
+        <section class="card feedback" aria-labelledby="feedback-heading">
+          <p class="eyebrow">YOUR TAKE</p><h2 id="feedback-heading">Quick feedback</h2>
+          <form data-feedback-form data-dj-form>
+            <fieldset><legend>Rate the release</legend><div class="chip-row">{[1, 2, 3, 4, 5].map((n) => <label class="rating"><input type="radio" name="rating" value={n} required /><span>{n} ★</span></label>)}</div></fieldset>
+            <fieldset><legend>Favourite track</legend><div class="choices">{tracks.map((track) => <label><input type="radio" name="favouriteTrack" value={track.title} /> {track.title}</label>)}</div></fieldset>
+            <fieldset><legend>Would you play it?</legend><div class="chip-row">{["Club", "Radio", "Stream", "Mix", "Not for me"].map((choice) => <label class="choice-chip"><input type="radio" name="wouldPlay" value={choice} /><span>{choice}</span></label>)}</div></fieldset>
+            <label class="input-label" for="kit-comment">Anything else? (optional)</label><input id="kit-comment" name="comment" type="text" maxlength="1000" placeholder="A note for the artist" />
+            <label class="honeypot" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+            <button class="primary-button" type="submit">Send feedback</button><p class="form-status" data-feedback-status role="status" aria-live="polite"></p>
+          </form>
+          <p class="thanks" data-feedback-thanks hidden>Thank you — your feedback has been sent.</p>
+        </section>
+        <section class="card downloads" aria-labelledby="download-heading">
+          <p class="eyebrow">FOR YOUR LIBRARY</p><h2 id="download-heading">Download the kit</h2>
+          {link.kit_zip_r2_key ? <a class="primary-button big-download" href={`${baseFileUrl}/zip`}>Download full kit ZIP ↓</a> : <p class="muted">Full kit ZIP is not available yet.</p>}
+          <p>Choose individual MP3, WAV, or AIFF files from the tracklist above.</p><p class="muted">Files tagged with BPM, key, ISRC.</p>
+        </section>
+        <section class="facts card" aria-label="Release facts">
+          <h2>Release facts</h2>
+          <dl><div><dt>Label</dt><dd>{artist.name}</dd></div><div><dt>Release</dt><dd>{link.track.release_at ? formatShortDate(link.track.release_at) : "TBA"}</dd></div>{link.track.isrc && <div><dt>ISRC</dt><dd>{link.track.isrc}</dd></div>}{artist.contact_email && <div><dt>Contact</dt><dd><a href={`mailto:${artist.contact_email}`}>{artist.contact_email}</a></dd></div>}</dl>
+        </section>
+      </>
+    ) : (
+      <>
+        <section class="card parts" aria-labelledby="parts-heading"><p class="eyebrow">WORKING FILES</p><h2 id="parts-heading">Parts packs</h2>
+          {tracks.some((track) => Boolean(track.parts_r2_key)) ? <div class="parts-list">{tracks.filter((track) => Boolean(track.parts_r2_key)).map((track) => <a href={`${baseFileUrl}/parts/${encodeURIComponent(track.id)}`}>Download parts · {track.title} ↓</a>)}</div> : <p class="muted">No parts packs shared yet.</p>}
+        </section>
+        <section class="card feedback" aria-label="Reply to artist"><h2>What do you think?</h2>{mailto && <a class="primary-button" href={mailto}>Reply by email ↗</a>}
+          <form data-feedback-form><label for="peer-reaction">Or leave a quick reaction (optional)</label><input id="peer-reaction" type="text" name="comment" maxlength="1000" placeholder="Your one-line reaction" /><label class="honeypot" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off" /></label><button type="submit" class="secondary-button">Send reaction</button><p class="form-status" data-feedback-status role="status" aria-live="polite"></p></form><p class="thanks" data-feedback-thanks hidden>Thank you — your reaction has been sent.</p>
+        </section>
+        <section class="card" aria-labelledby="credits-heading"><h2 id="credits-heading">Credits</h2>{factLines.length > 0 && <ul>{factLines.map((fact) => <li>{fact}</li>)}</ul>}<p>Splits agreed in writing before anything is released.</p></section>
+        <section class="card" aria-labelledby="about-heading"><h2 id="about-heading">About {artist.name}</h2><p class="bio">{artist.bio}</p></section>
+      </>
+    )}
+
+    <footer class="footer">
+      {artist.contact_email && <a href={`mailto:${artist.contact_email}`}>Contact {artist.name}</a>}
+      {link.destinations.length > 0 && <nav aria-label="Artist links">{link.destinations.map((destination) => <a href={destination.url} target="_blank" rel="noopener noreferrer">{destination.label}</a>)}</nav>}
+      <p>Private promo link for you — it logs plays and downloads so I know who actually heard it. Don't forward it; ask me for another copy instead.</p>
+    </footer>
+  </div>
+
+  <section class="player-dock" aria-label="Music controls" data-dock>
+    <audio data-kit-audio preload="none"></audio>
+    <div class="dock-now"><img src={artwork} alt="" width="44" height="44" /><div><span>{artist.name}</span><strong data-current-title>{lead?.title ?? "Select a track"}</strong></div></div>
+    <div class="dock-controls"><button type="button" data-previous aria-label="Previous track">⏮</button><button type="button" class="dock-play" data-toggle aria-label="Play" disabled={!lead?.preview_r2_key}>▶</button><button type="button" data-next aria-label="Next track">⏭</button></div>
+    <div class="dock-progress"><span data-position>0:00</span><input data-seek type="range" min="0" max="100" value="0" step="0.1" aria-label="Track position" /><span data-duration>{lead ? formatTime(lead.duration_sec) : "0:00"}</span></div>
+    <p class="player-status" data-player-status aria-live="polite"></p>
+  </section>
+</main>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-kit-root]");
+  if (root) {
+    const audio = root.querySelector<HTMLAudioElement>("[data-kit-audio]");
+    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-play-track]"));
+    const dockPlay = root.querySelector<HTMLButtonElement>("[data-toggle]");
+    const previous = root.querySelector<HTMLButtonElement>("[data-previous]");
+    const next = root.querySelector<HTMLButtonElement>("[data-next]");
+    const seek = root.querySelector<HTMLInputElement>("[data-seek]");
+    const position = root.querySelector<HTMLElement>("[data-position]");
+    const duration = root.querySelector<HTMLElement>("[data-duration]");
+    const currentTitle = root.querySelector<HTMLElement>("[data-current-title]");
+    const playerStatus = root.querySelector<HTMLElement>("[data-player-status]");
+    const token = root.dataset.token ?? "";
+    const playable = buttons.filter((button, i, all) => !button.disabled && all.findIndex((candidate) => candidate.dataset.playTrack === button.dataset.playTrack) === i);
+    const played = new Set<string>();
+    let activeId = playable[0]?.dataset.playTrack ?? "";
+    const time = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.floor(Math.max(0, seconds)) % 60).padStart(2, "0")}`;
+    const stream = (id: string) => `/kit-file/${encodeURIComponent(token)}/stream/${encodeURIComponent(id)}`;
+    const beacon = (id: string, event: "play" | "ended") => {
+      if (!navigator.sendBeacon) return;
+      navigator.sendBeacon("/api/kit-event", new Blob([JSON.stringify({ token, trackId: id, event })], { type: "application/json" }));
+    };
+    const update = () => {
+      const playing = Boolean(audio && !audio.paused);
+      for (const button of buttons) {
+        const selected = button.dataset.playTrack === activeId;
+        button.setAttribute("aria-pressed", String(selected && playing));
+        button.querySelector<HTMLElement>("[data-play-icon]")!.textContent = selected && playing ? "▮▮" : "▶";
+      }
+      for (const row of root.querySelectorAll<HTMLElement>("[data-track-row]")) row.classList.toggle("active", row.dataset.trackRow === activeId);
+      if (dockPlay) { dockPlay.textContent = playing ? "▮▮" : "▶"; dockPlay.setAttribute("aria-label", playing ? "Pause" : "Play"); }
+      if (position && audio) position.textContent = time(audio.currentTime || 0);
+      if (duration && audio) duration.textContent = time(Number.isFinite(audio.duration) ? audio.duration : 0);
+      if (seek && audio) { seek.max = String(Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 100); seek.value = String(audio.currentTime || 0); }
+    };
+    const playTrack = async (id: string) => {
+      if (!audio) return;
+      if (activeId !== id || !audio.getAttribute("src")) {
+        activeId = id;
+        audio.src = stream(id);
+        const button = playable.find((entry) => entry.dataset.playTrack === id);
+        const row = root.querySelector<HTMLElement>(`[data-track-row="${CSS.escape(id)}"]`);
+        if (currentTitle) currentTitle.textContent = row?.querySelector("strong")?.textContent?.replace(/^\d+\.\s*/, "") ?? button?.getAttribute("aria-label")?.replace(/^Play /, "") ?? "Track";
+      } else if (!audio.paused) { audio.pause(); update(); return; }
+      if (playerStatus) playerStatus.textContent = "";
+      try { await audio.play(); } catch { if (playerStatus) playerStatus.textContent = "Playback unavailable. Try again."; }
+      update();
+    };
+    const move = (direction: number) => {
+      if (!playable.length) return;
+      const index = playable.findIndex((entry) => entry.dataset.playTrack === activeId);
+      const nextIndex = (index + direction + playable.length) % playable.length;
+      const id = playable[nextIndex]?.dataset.playTrack;
+      if (id) void playTrack(id);
+    };
+    buttons.forEach((button) => button.addEventListener("click", () => { if (button.dataset.playTrack) void playTrack(button.dataset.playTrack); }));
+    dockPlay?.addEventListener("click", () => { if (activeId) void playTrack(activeId); });
+    previous?.addEventListener("click", () => move(-1));
+    next?.addEventListener("click", () => move(1));
+    seek?.addEventListener("input", () => { if (audio && Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value); });
+    audio?.addEventListener("play", () => { if (activeId && !played.has(activeId)) { played.add(activeId); beacon(activeId, "play"); } update(); });
+    audio?.addEventListener("pause", update);
+    audio?.addEventListener("timeupdate", update);
+    audio?.addEventListener("loadedmetadata", update);
+    audio?.addEventListener("ended", () => { if (activeId) beacon(activeId, "ended"); update(); });
+    audio?.addEventListener("error", () => { if (playerStatus) playerStatus.textContent = "Audio could not be loaded."; update(); });
+    update();
+    for (const form of root.querySelectorAll<HTMLFormElement>("[data-feedback-form]")) {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+        const status = form.querySelector<HTMLElement>("[data-feedback-status]");
+        const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+        const data = new FormData(form);
+        const dj = form.hasAttribute("data-dj-form");
+        const payload = dj
+          ? { token, rating: Number(data.get("rating")), favouriteTrack: String(data.get("favouriteTrack") ?? ""), wouldPlay: String(data.get("wouldPlay") ?? ""), comment: String(data.get("comment") ?? ""), website: String(data.get("website") ?? "") }
+          : { token, comment: String(data.get("comment") ?? ""), website: String(data.get("website") ?? "") };
+        if (submit) submit.disabled = true;
+        if (status) status.textContent = "Sending…";
+        try {
+          const response = await fetch("/api/kit-feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+          if (!response.ok) throw new Error("Feedback could not be sent.");
+          form.hidden = true;
+          const thanks = form.parentElement?.querySelector<HTMLElement>("[data-feedback-thanks]");
+          if (thanks) thanks.hidden = false;
+        } catch { if (status) status.textContent = "Could not send feedback. Please try again."; if (submit) submit.disabled = false; }
+      });
+    }
+  }
+</script>
+
+<style>
+  .kit-page { position: relative; isolation: isolate; min-height: 100dvh; color: var(--foreground); padding: 1.25rem 1rem 10rem; }
+  .kit-backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, color-mix(in oklch, var(--background) 65%, transparent), var(--background) 75%), var(--artwork-image) center/cover; filter: saturate(1.1); }
+  .smart-page--bg-ascii .kit-backdrop { background-image: var(--ascii-pattern); background-size: var(--ascii-tile, 200px 160px); }
+  .kit-content { width: min(100%, 40rem); margin: 0 auto; display: grid; gap: 1.5rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; font-weight: 750; color: var(--muted); }
+  .greeting { padding: .85rem 1rem; border: 1px solid var(--border); border-radius: 12px; font-size: .84rem; background: var(--surface); }
+  .hero { display: grid; gap: 1.25rem; }
+  .cover { width: min(76%, 19rem); aspect-ratio: 1; object-fit: cover; margin: auto; border-radius: 16px; box-shadow: 0 20px 60px #0007; }
+  .hero-copy { display: grid; gap: .5rem; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(1.7rem, 6vw, 2.8rem); line-height: 1.12; overflow-wrap: anywhere; }
+  h1 span { display: block; font-size: .72em; font-weight: 500; }
+  h2 { font-size: 1.35rem; line-height: 1.2; }
+  .genre, .context, .invitation { line-height: 1.55; }
+  .invitation { font-size: 1.2rem; font-weight: 600; padding: 1rem; border-left: 3px solid var(--primary); background: var(--surface); white-space: pre-wrap; }
+  .muted { color: var(--muted); font-size: .87rem; }
+  .card { display: grid; gap: .85rem; padding: 1.25rem; border-radius: 16px; border: 1px solid var(--border); background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(14px); }
+  .lead-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+  .lead-row div { display: grid; gap: .35rem; }
+  .play-control, .row-play, .dock-controls button { display: grid; place-items: center; border: 1px solid var(--border); border-radius: 100px; color: var(--foreground); background: var(--surface); cursor: pointer; }
+  .play-control { width: 3.4rem; height: 3.4rem; flex: none; font-size: 1.2rem; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .track-section { display: grid; gap: 1rem; }
+  .section-heading { display: grid; gap: .4rem; }
+  .track-list { border-top: 1px solid var(--border); }
+  .track-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .65rem .85rem; padding: 1rem .2rem; border-bottom: 1px solid var(--border); }
+  .track-row.active { background: color-mix(in oklch, var(--primary) 9%, transparent); }
+  .row-play { width: 2.65rem; height: 2.65rem; grid-row: span 2; }
+  .track-text { display: grid; gap: .2rem; min-width: 0; }
+  .track-text strong { overflow-wrap: anywhere; }
+  .track-text span { color: var(--muted); font-size: .83rem; }
+  .track-details, .file-links { display: flex; gap: .7rem; flex-wrap: wrap; align-items: center; font-size: .78rem; color: var(--muted); grid-column: 2; }
+  .file-links a, .parts-list a { color: var(--foreground); text-underline-offset: .2rem; }
+  .lyrics { grid-column: 1 / -1; font-size: .9rem; }
+  .lyrics summary { cursor: pointer; }
+  .lyrics p, .bio { white-space: pre-wrap; line-height: 1.65; margin-top: .6rem; }
+  fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .5rem; min-width: 0; }
+  legend { font-weight: 650; margin-bottom: .5rem; }
+  form { display: grid; gap: 1rem; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .rating, .choice-chip { cursor: pointer; position: relative; }
+  .rating input, .choice-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .rating span, .choice-chip span { display: inline-block; padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 999px; }
+  .rating input:checked + span, .choice-chip input:checked + span { background: var(--primary); color: var(--background); }
+  .rating input:focus-visible + span, .choice-chip input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .choices { display: grid; gap: .55rem; }
+  .input-label { font-weight: 650; }
+  input[type="text"] { width: 100%; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--foreground); padding: .85rem; font: inherit; }
+  .honeypot { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .primary-button, .secondary-button { display: inline-flex; justify-content: center; text-align: center; align-items: center; min-height: 2.9rem; padding: .75rem 1rem; border: 1px solid var(--border); border-radius: 12px; text-decoration: none; cursor: pointer; font: inherit; font-weight: 700; }
+  .primary-button { color: var(--background); background: var(--foreground); }
+  .secondary-button { color: var(--foreground); background: var(--surface); }
+  .big-download { min-height: 3.5rem; }
+  .form-status { min-height: 1.2em; color: var(--muted); }
+  [hidden] { display: none !important; }
+  dl, .parts-list { display: grid; gap: .75rem; margin: 0; }
+  dl div { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  ul { margin: 0; padding-left: 1.2rem; }
+  .footer { display: grid; gap: .85rem; font-size: .85rem; line-height: 1.5; padding-bottom: 1rem; }
+  .footer nav { display: flex; flex-wrap: wrap; gap: .8rem; }
+  .footer p { color: var(--muted); }
+  .footer a { color: var(--foreground); }
+  .player-dock { position: fixed; z-index: 50; bottom: 0; left: 0; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: .65rem; padding: .7rem max(1rem, calc((100vw - 40rem) / 2)); background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(20px); border-top: 1px solid var(--border); box-shadow: 0 -10px 35px #0003; }
+  .dock-now { display: flex; gap: .65rem; align-items: center; min-width: 0; }
+  .dock-now img { width: 2.8rem; height: 2.8rem; border-radius: 6px; object-fit: cover; }
+  .dock-now div { display: grid; gap: .15rem; min-width: 0; }
+  .dock-now span { font-size: .68rem; color: var(--muted); }
+  .dock-now strong { font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-controls { display: flex; gap: .3rem; align-items: center; }
+  .dock-controls button { width: 2.3rem; height: 2.3rem; }
+  .dock-controls .dock-play { width: 2.7rem; height: 2.7rem; }
+  .dock-progress { display: grid; grid-column: 1 / -1; grid-template-columns: 2.5rem 1fr 2.5rem; gap: .5rem; align-items: center; font-size: .68rem; color: var(--muted); }
+  .dock-progress input { width: 100%; accent-color: var(--primary); }
+  .player-status { grid-column: 1 / -1; font-size: .72rem; color: var(--muted); }
+  .player-status:empty { display: none; }
+  @media (min-width: 640px) { .hero { grid-template-columns: 13rem 1fr; align-items: center; } .cover { width: 100%; } .track-row { grid-template-columns: auto minmax(0, 1fr) auto; } .track-details { grid-column: 3; } .file-links { grid-column: 2 / -1; } }
+</style>
