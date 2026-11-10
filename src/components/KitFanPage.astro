@@ -115,9 +115,11 @@ const lead = tracks[0];
       </>
     ) : (
       <>
-        <section class="card parts" aria-labelledby="parts-heading"><p class="eyebrow">WORKING FILES</p><h2 id="parts-heading">Parts packs</h2>
-          {tracks.some((track) => Boolean(track.parts_r2_key)) ? <div class="parts-list">{tracks.filter((track) => Boolean(track.parts_r2_key)).map((track) => <a href={`${baseFileUrl}/parts/${encodeURIComponent(track.id)}`}>Download parts · {track.title} ↓</a>)}</div> : <p class="muted">No parts packs shared yet.</p>}
-        </section>
+        {tracks.some((track) => Boolean(track.parts_r2_key)) && (
+          <section class="card parts" aria-labelledby="parts-heading"><p class="eyebrow">WORKING FILES</p><h2 id="parts-heading">Parts packs</h2>
+            <div class="parts-list">{tracks.filter((track) => Boolean(track.parts_r2_key)).map((track) => <a href={`${baseFileUrl}/parts/${encodeURIComponent(track.id)}`}>Download parts · {track.title} ↓</a>)}</div>
+          </section>
+        )}
         <section class="card feedback" aria-label="Reply to artist"><h2>What do you think?</h2>{mailto && <a class="primary-button" href={mailto}>Reply by email ↗</a>}
           <form data-feedback-form><label for="peer-reaction">Or leave a quick reaction (optional)</label><input id="peer-reaction" type="text" name="comment" maxlength="1000" placeholder="Your one-line reaction" /><label class="honeypot" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off" /></label><button type="submit" class="secondary-button">Send reaction</button><p class="form-status" data-feedback-status role="status" aria-live="polite"></p></form><p class="thanks" data-feedback-thanks hidden>Thank you — your reaction has been sent.</p>
         </section>
