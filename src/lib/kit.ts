@@ -51,6 +51,9 @@ export interface KitArtist {
   contact_email: string;
   facts: string;
   created_at: string;
+  tiktok_url: string | null;
+  instagram_url: string | null;
+  website_url: string | null;
 }
 
 export interface KitLinkFields {
@@ -73,6 +76,9 @@ type KitLookupRow = KitToken & KitLinkFields & {
   artist_photo_r2_key: string;
   artist_contact_email: string;
   artist_facts: string;
+  artist_tiktok_url: string | null;
+  artist_instagram_url: string | null;
+  artist_website_url: string | null;
   artist_created_at: string;
 };
 
@@ -82,7 +88,8 @@ export async function getKitDataByToken(env: RuntimeEnv, token: string): Promise
             artists.id AS artist_id, artists.name AS artist_name,
             artists.bio AS artist_bio, artists.photo_r2_key AS artist_photo_r2_key,
             artists.contact_email AS artist_contact_email, artists.facts AS artist_facts,
-            artists.created_at AS artist_created_at
+            artists.created_at AS artist_created_at,
+            artists.tiktok_url AS artist_tiktok_url, artists.instagram_url AS artist_instagram_url, artists.website_url AS artist_website_url
      FROM kit_tokens
      JOIN links ON links.id = kit_tokens.link_id
      JOIN tracks ON tracks.id = links.track_id
@@ -113,7 +120,10 @@ export async function getKitDataByToken(env: RuntimeEnv, token: string): Promise
       photo_r2_key: row.artist_photo_r2_key,
       contact_email: row.artist_contact_email,
       facts: row.artist_facts,
-      created_at: row.artist_created_at
+      created_at: row.artist_created_at,
+      tiktok_url: row.artist_tiktok_url || null,
+      instagram_url: row.artist_instagram_url || null,
+      website_url: row.artist_website_url || null
     },
     tracks,
     token: {

@@ -76,13 +76,11 @@ const lead = tracks[0];
             <button class="row-play" type="button" data-play-track={track.id} aria-label={`Play ${track.title}`} aria-pressed="false" disabled={!track.preview_r2_key}><span data-play-icon>▶</span></button>
             <div class="track-text"><strong>{String(i + 1).padStart(2, "0")}. {track.title}</strong><span>{track.mix_name}</span></div>
             <div class="track-details"><span>{formatTime(track.duration_sec)}</span>{track.bpm != null && <span>{track.bpm} BPM</span>}{track.musical_key && <span>{track.musical_key}</span>}</div>
-            {isDj && (
-              <div class="file-links" aria-label={`Download ${track.title}`}>
-                {track.mp3_r2_key && <a href={downloadUrl(track, "mp3")}>MP3</a>}
-                {track.wav_r2_key && <a href={downloadUrl(track, "wav")}>WAV</a>}
-                {track.aiff_r2_key && <a href={downloadUrl(track, "aiff")}>AIFF</a>}
-              </div>
-            )}
+            <div class="file-links" aria-label={`Download ${track.title}`}>
+              {track.mp3_r2_key && <a href={downloadUrl(track, "mp3")}>MP3</a>}
+              {track.wav_r2_key && <a href={downloadUrl(track, "wav")}>WAV</a>}
+              {track.aiff_r2_key && <a href={downloadUrl(track, "aiff")}>AIFF</a>}
+            </div>
             {!isDj && track.lyrics.trim() && <details class="lyrics"><summary>Lyrics</summary><p>{track.lyrics}</p></details>}
           </article>
         ))}
@@ -131,6 +129,7 @@ const lead = tracks[0];
     <footer class="footer">
       {artist.contact_email && <a href={`mailto:${artist.contact_email}`}>Contact {artist.name}</a>}
       {link.destinations.length > 0 && <nav aria-label="Artist links">{link.destinations.map((destination) => <a href={destination.url} target="_blank" rel="noopener noreferrer">{destination.label}</a>)}</nav>}
+      {(artist.tiktok_url || artist.instagram_url || artist.website_url) && <nav class="socials" aria-label="Artist socials">{artist.tiktok_url && <a href={artist.tiktok_url} target="_blank" rel="noopener noreferrer">TikTok</a>}{artist.instagram_url && <a href={artist.instagram_url} target="_blank" rel="noopener noreferrer">Instagram</a>}{artist.website_url && <a href={artist.website_url} target="_blank" rel="noopener noreferrer">Website</a>}</nav>}
       <p>Private promo link for you — it logs plays and downloads so I know who actually heard it. Don't forward it; ask me for another copy instead.</p>
     </footer>
   </div>
@@ -316,4 +315,79 @@ const lead = tracks[0];
   .player-status { grid-column: 1 / -1; font-size: .72rem; color: var(--muted); }
   .player-status:empty { display: none; }
   @media (min-width: 640px) { .hero { grid-template-columns: 13rem 1fr; align-items: center; } .cover { width: 100%; } .track-row { grid-template-columns: auto minmax(0, 1fr) auto; } .track-details { grid-column: 3; } .file-links { grid-column: 2 / -1; } }
+  .player-dock {
+    padding-bottom: calc(.7rem + env(safe-area-inset-bottom));
+  }
+
+  .file-links {
+    gap: .6rem;
+  }
+
+  .file-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.5rem;
+    padding: .45rem .85rem;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    background: var(--surface);
+    color: var(--foreground);
+    text-decoration: none;
+    font-size: .82rem;
+  }
+
+  .rating span, .choice-chip span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: .55rem .95rem;
+  }
+
+  .choice-chip {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+
+  .track-details {
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .cover {
+      height: auto;
+      align-self: center;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .kit-content {
+      width: min(100%, 64rem);
+    }
+
+    .player-dock {
+      padding-inline: max(1rem, calc((100vw - 64rem) / 2));
+    }
+
+    .hero {
+      grid-template-columns: 19rem 1fr;
+    }
+
+    .track-row {
+      padding-block: 1.25rem;
+    }
+
+    .track-text strong {
+      font-size: 1.05rem;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .dock-progress {
+      grid-template-columns: 2rem 1fr 2rem;
+    }
+  }
+  .socials { display: flex; flex-wrap: wrap; gap: .6rem; }
+  .socials a { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; padding: .45rem .85rem; border: 1px solid var(--border); border-radius: 100px; background: var(--surface); color: var(--foreground); text-decoration: none; font-size: .82rem; }
 </style>
